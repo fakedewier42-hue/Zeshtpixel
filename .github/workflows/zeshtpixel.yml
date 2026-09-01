@@ -1,37 +1,30 @@
-name: Start ZeshtPixel
+name: Minecraft Server (Windows) with playit.gg
 
 on: [push, workflow_dispatch]
 
 jobs:
   build:
-    runs-on: windows-latest  # تغییر به ویندوز
+    runs-on: windows-latest
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    # =============================================
-    # 1. نصب پیش‌نیازهای ویندوز
-    # =============================================
-    - name: Install dependencies (Windows)
-      run: |
-        # نصب curl و ابزارهای ضروری (معمولاً از قبل نصب هستند)
-        choco install curl wget -y  # در صورت نیاز
-
-    # =============================================
-    # 2. دانلود و اجرای ZBProxy (نسخه ویندوز)
-    # =============================================
     - name: Download ZBProxy (Windows)
       run: |
-        # دانلود نسخه ویندوزی ZBProxy
-        curl -L -o ZBProxy.exe "https://github.com/layou233/ZBProxy/releases/download/v3.1.0/ZBProxy-windows-amd64.exe"
-        # نیازی به chmod در ویندوز نیست
+        Write-Host "📥 Downloading ZBProxy v3.1.0 for Windows..."
+        $url = "https://github.com/layou233/ZBProxy/releases/download/v3.1.0/ZBProxy-windows-amd64-v3.exe"
+        curl -L -o ZBProxy.exe $url
+        if (Test-Path ZBProxy.exe) {
+          Write-Host "✅ Download successful! File size: $((Get-Item ZBProxy.exe).Length) bytes"
+        } else {
+          Write-Host "❌ Download failed!"
+          exit 1
+        }
 
     - name: Download and Encode Icon
       run: |
-        # دانلود آیکون از گیت‌هاب
         curl -L -o server-icon.png "https://raw.githubusercontent.com/fakedewier42-hue/Zesht-Icon/main/photo_2026-09-01_15-14-07.png"
-        # تبدیل به Base64 در PowerShell
         $bytes = [System.IO.File]::ReadAllBytes("$pwd\server-icon.png")
         $base64 = [Convert]::ToBase64String($bytes)
         $ICON_BASE64 = "data:image/png;base64,$base64"
@@ -39,7 +32,6 @@ jobs:
 
     - name: Create ZBProxy Configuration
       run: |
-        # استفاده از متغیر ICON_BASE64 در کانفیگ (با Syntax PowerShell)
         $ICON = $env:ICON_BASE64
         @"
         {
@@ -105,24 +97,21 @@ jobs:
         }
         "@ | Out-File -FilePath ZBProxy.json -Encoding utf8
 
-    - name: Run ZBProxy in Background (Windows)
+    - name: Run ZBProxy in Background
       run: |
-        # اجرای ZBProxy در پس‌زمینه با Start-Process
-        Start-Process -NoNewWindow -FilePath ".\ZBProxy.exe" -RedirectStandardOutput "zbproxy.log" -RedirectStandardError "zbproxy.error.log"
+        Write-Host "🚀 Starting ZBProxy..."
+        Start-Job -ScriptBlock { & ".\ZBProxy.exe" > zbproxy.log 2>&1 }
         Start-Sleep -Seconds 5
-        Write-Host "✅ ZBProxy is running in background!"
+        Write-Host "✅ ZBProxy is running as a job!"
 
-    # =============================================
-    # 3. نصب و راه‌اندازی playit.gg (ویندوز)
-    # =============================================
     - name: Install playit.gg (Windows)
       run: |
-        # دانلود نصب‌کننده playit.gg برای ویندوز
+        Write-Host "📥 Downloading playit.gg installer..."
         curl -L -o playit-installer.exe "https://playit.gg/downloads/playit-windows-x64.exe"
-        # نصب بی‌صدا (Silent Install)
+        Write-Host "📦 Installing playit.gg (silent)..."
         Start-Process -Wait -FilePath ".\playit-installer.exe" -ArgumentList "/S"
-        # صبر برای کامل شدن نصب
         Start-Sleep -Seconds 10
+        Write-Host "✅ playit.gg installed!"
 
     - name: Run playit.gg and show Claim Code
       run: |
@@ -130,23 +119,39 @@ jobs:
         Write-Host "🔐 Starting playit.gg to get Claim Code..."
         Write-Host "==========================================="
         
-        # مسیر نصب playit (معمولاً در Program Files)
-        $playitPath = "C:\Program Files\playit\playit.exe"
-        if (-not (Test-Path $playitPath)) {
-          $playitPath = "C:\Program Files (x86)\playit\playit.exe"
+        $playitPaths = @(
+          "C:\Program Files\playit\playit.exe",
+          "C:\Program Files (x86)\playit\playit.exe",
+          "$env:LOCALAPPDATA\Programs\playit\playit.exe"
+        )
+        
+        $playitPath = $null
+        foreach ($path in $playitPaths) {
+          if (Test-Path $path) {
+            $playitPath = $path
+            break
+          }
         }
         
-        # حذف تنظیمات قبلی (در صورت وجود)
+        if (-not $playitPath) {
+          Write-Host "❌ playit.exe not found!"
+          Write-Host "Searching in common locations..."
+          Get-ChildItem -Path "C:\" -Filter "playit.exe" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "Found: $($_.FullName)"
+          }
+          exit 1
+        }
+        
+        Write-Host "🔍 Found playit at: $playitPath"
         Remove-Item -Force -ErrorAction SilentlyContinue -Recurse "$env:APPDATA\playit"
         Remove-Item -Force -ErrorAction SilentlyContinue -Recurse "$env:LOCALAPPDATA\playit"
         
-        # اجرای playit و گرفتن خروجی
+        Write-Host "🔄 Running playit to generate Claim Code..."
         $output = & $playitPath 2>&1 | Out-String
         Write-Host "=== Full playit.gg output ==="
         Write-Host $output
         Write-Host "================================"
         
-        # جستجوی Claim Code در خروجی
         if ($output -match 'https://playit.gg/claim/([a-zA-Z0-9]+)') {
           $claimUrl = $matches[0]
           Write-Host ""
@@ -158,9 +163,6 @@ jobs:
         }
         Write-Host "==========================================="
 
-    # =============================================
-    # 4. نمایش اطلاعات نهایی
-    # =============================================
     - name: Show Connection Info
       run: |
         Write-Host "==========================================="
@@ -178,9 +180,6 @@ jobs:
         Write-Host "🎮 Connect to the server using this address"
         Write-Host "==========================================="
 
-    # =============================================
-    # 5. نگهداشتن سرور (6 ساعت)
-    # =============================================
     - name: Keep Alive
       run: |
         Write-Host "🔄 Server is running for 6 hours..."
@@ -188,13 +187,11 @@ jobs:
           Start-Sleep -Seconds 60
           if ($i % 5 -eq 0) {
             Write-Host "⏱️ Still alive... $(Get-Date)"
-            # بررسی سلامت ZBProxy
-            $proc = Get-Process -Name "ZBProxy" -ErrorAction SilentlyContinue
-            if (-not $proc) {
+            $proc = Get-Job -Name "ZBProxy" -ErrorAction SilentlyContinue
+            if (-not $proc -or $proc.State -eq "Completed" -or $proc.State -eq "Failed") {
               Write-Host "⚠️ ZBProxy died! Restarting..."
-              Start-Process -NoNewWindow -FilePath ".\ZBProxy.exe" -RedirectStandardOutput "zbproxy.log" -RedirectStandardError "zbproxy.error.log"
+              Start-Job -ScriptBlock { & ".\ZBProxy.exe" > zbproxy.log 2>&1 }
             }
-            # بررسی سلامت playit
             $playitProc = Get-Process -Name "playit" -ErrorAction SilentlyContinue
             if (-not $playitProc) {
               Write-Host "⚠️ playit.gg died! Restarting..."
@@ -202,7 +199,9 @@ jobs:
               if (-not (Test-Path $playitPath)) {
                 $playitPath = "C:\Program Files (x86)\playit\playit.exe"
               }
-              Start-Process -NoNewWindow -FilePath $playitPath
+              if (Test-Path $playitPath) {
+                Start-Process -NoNewWindow -FilePath $playitPath
+              }
             }
           }
         }
