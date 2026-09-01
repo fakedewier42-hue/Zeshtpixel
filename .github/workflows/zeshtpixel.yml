@@ -1,4 +1,4 @@
-name: Minecraft Server with Tailscale, GUI & playit.gg
+name: ُStart ZeshtPixel
 
 on: [push, workflow_dispatch]
 
