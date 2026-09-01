@@ -1,4 +1,4 @@
-name: Minecraft Server with ZBProxy & playit.gg
+name: Minecraft Server with ZBProxy & playit.gg (Auto)
 
 on: [push, workflow_dispatch]
 
@@ -95,42 +95,24 @@ jobs:
       run: |
         curl -fsSL https://packages.playit.gg/install.sh | bash -s -- -y
 
-    - name: Run playit.gg and show Claim Code
+    - name: Run playit.gg with Secret Key
+      env:
+        SECRET_KEY: ${{ secrets.PLAYIT_SECRET_KEY }}
       run: |
         echo "==========================================="
-        echo "🔐 Starting playit.gg..."
+        echo "🔐 Starting playit.gg with Secret Key..."
         echo "==========================================="
         
-        # 1. اطمینان از توقف سرویس
+        # توقف سرویس سیستمی
         sudo systemctl stop playit.service || true
+        sudo systemctl disable playit.service || true
         
-        # 2. حذف فایل‌های پیکربندی قدیمی (برای دریافت Claim Code جدید)
-        sudo rm -rf /etc/playit || true
-        rm -rf ~/.config/playit || true
+        # اجرای playit با Secret Key در screen
+        screen -dmS playit bash -c "playit -s $SECRET_KEY"
+        sleep 5
         
-        # 3. اجرای playit به صورت مستقیم با timeout
-        echo "🔄 Running playit directly to get Claim Code..."
-        timeout 60s playit || true
-        
-        # 4. جستجوی Claim Code در لاگ‌های systemd
+        echo "✅ playit.gg is running with your Secret Key!"
         echo "==========================================="
-        echo "🔍 Searching for Claim Code in logs..."
-        echo "==========================================="
-        sudo journalctl -u playit.service --no-pager | grep -o 'https://playit.gg/claim/[a-zA-Z0-9]*' | tail -1
-        
-        # 5. جستجوی Claim Code در فایل‌های موقت
-        echo "🔍 Searching in temporary files..."
-        grep -r 'https://playit.gg/claim/' /tmp/ 2>/dev/null | head -1
-        
-        echo "==========================================="
-        echo "💡 If no Claim Code appears above:"
-        echo "   1. Check the 'Run playit.gg and show Claim Code' step logs"
-        echo "   2. Look for any error messages"
-        echo "   3. If playit runs successfully, the code will appear in the logs above"
-        echo "==========================================="
-        
-        # 6. راه‌اندازی مجدد سرویس (اما در پس‌زمینه)
-        sudo systemctl start playit.service || true
 
     - name: Show Connection Info
       run: |
@@ -138,15 +120,14 @@ jobs:
         echo "✅ Server is READY!"
         echo "==========================================="
         echo ""
-        echo "📋 How to connect:"
-        echo "   1. Find the Claim Code link above"
-        echo "   2. Open it in your browser"
-        echo "   3. Claim the device"
-        echo "   4. Create a Minecraft Java tunnel on port 25565"
-        echo "   5. Share the generated address with your friends"
+        echo "🔗 The address will be available in the playit.gg dashboard:"
+        echo "   https://playit.gg/"
         echo ""
-        echo "🔗 The address will be something like: abc123.joinmc.link"
-        echo "🎮 Connect to the server using this address"
+        echo "📋 How to connect:"
+        echo "   1. Go to playit.gg dashboard"
+        echo "   2. Find the tunnel address for your server"
+        echo "   3. Share the address with your friends"
+        echo "🎮 Connect to the server using that address"
         echo "==========================================="
 
     - name: Keep Alive
@@ -162,7 +143,7 @@ jobs:
             fi
             if ! pgrep -f "playit" > /dev/null; then
               echo "⚠️ playit.gg died! Restarting..."
-              screen -dmS playit playit
+              screen -dmS playit bash -c "playit -s ${{ secrets.PLAYIT_SECRET_KEY }}"
             fi
           fi
         done
