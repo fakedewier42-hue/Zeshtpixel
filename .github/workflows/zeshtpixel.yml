@@ -10,18 +10,12 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    # =============================================
-    # 1. نصب پیش‌نیازها و دسکتاپ گرافیکی
-    # =============================================
     - name: Install dependencies & GUI
       run: |
         sudo apt-get update
         sudo apt-get install -y wget curl screen xfce4 xfce4-goodies xvfb x11vnc
         sudo apt-get install -y firefox
 
-    # =============================================
-    # 2. نصب و راه‌اندازی Tailscale
-    # =============================================
     - name: Install Tailscale
       run: |
         curl -fsSL https://tailscale.com/install.sh | sh
@@ -32,33 +26,28 @@ jobs:
       run: |
         sudo tailscale up --authkey $TS_AUTHKEY --accept-routes --accept-dns
 
-    # =============================================
-    # 3. راه‌اندازی دسکتاپ گرافیکی (VNC)
-    # =============================================
     - name: Setup VNC Server
       run: |
-        # راه‌اندازی Xvfb (صفحه‌نمایش مجازی)
         Xvfb :99 -screen 0 1280x720x24 &
         export DISPLAY=:99
-        
-        # راه‌اندازی xfce4
         startxfce4 &
         sleep 5
-        
-        # راه‌اندازی VNC server
         x11vnc -display :99 -forever -nopw -passwd 123456 &
 
-    # =============================================
-    # 4. دانلود و اجرای ZBProxy
-    # =============================================
     - name: Download ZBProxy
       run: |
         wget -q -O ZBProxy "https://github.com/layou233/ZBProxy/releases/download/v3.1.0/ZBProxy-linux-amd64-v1"
         chmod +x ZBProxy
 
+    - name: Download and Encode Icon
+      run: |
+        wget -q -O server-icon.png "https://raw.githubusercontent.com/fakedewier42-hue/Zesht-Icon/main/photo_2026-09-01_15-14-07.png"
+        ICON_BASE64="data:image/png;base64,$(base64 -w0 server-icon.png)"
+        echo "ICON_BASE64=$ICON_BASE64" >> $GITHUB_ENV
+
     - name: Create ZBProxy Configuration
       run: |
-        cat > ZBProxy.json << 'EOF'
+        cat > ZBProxy.json << EOF
         {
             "Log": {
                 "Level": "info"
@@ -112,7 +101,7 @@ jobs:
                             "Mode": ""
                         },
                         "PingMode": "",
-                        "MotdFavicon": "{DEFAULT_MOTD}",
+                        "MotdFavicon": "$ICON_BASE64",
                         "MotdDescription": "§6§lWelcome to §c§lZeshtPixel §e§lthe server by §b§lDabbler_"
                     },
                     "ProxyOptions": {}
@@ -127,9 +116,6 @@ jobs:
         screen -dmS zbproxy ./ZBProxy
         sleep 5
 
-    # =============================================
-    # 5. نصب و راه‌اندازی playit.gg (با Claim Code)
-    # =============================================
     - name: Install playit.gg
       run: |
         curl -fsSL https://packages.playit.gg/install.sh | bash -s -- -y
@@ -139,24 +125,15 @@ jobs:
         echo "==========================================="
         echo "🔐 Starting playit.gg to get Claim Code..."
         echo "==========================================="
-        
-        # توقف سرویس systemd و حذف تنظیمات قبلی
         sudo systemctl stop playit.service || true
         sudo rm -rf /etc/playit || true
         rm -rf ~/.config/playit || true
-        
-        # اجرای playit در screen با زمان کافی برای نمایش Claim Code
         screen -dmS playit bash -c "playit"
         sleep 15
-        
-        # گرفتن خروجی از screen
         screen -S playit -X hardcopy /tmp/playit_output.txt
-        
         echo "=== Full playit.gg output ==="
         cat /tmp/playit_output.txt
         echo "================================"
-        
-        # استخراج Claim Code
         CLAIM_URL=$(grep -o 'https://playit.gg/claim/[a-zA-Z0-9]*' /tmp/playit_output.txt | head -1)
         if [ -n "$CLAIM_URL" ]; then
           echo ""
@@ -168,9 +145,6 @@ jobs:
         fi
         echo "==========================================="
 
-    # =============================================
-    # 6. نمایش اطلاعات اتصال
-    # =============================================
     - name: Show Connection Info
       run: |
         TAILSCALE_IP=$(sudo tailscale ip)
@@ -190,9 +164,6 @@ jobs:
         echo "   5. Share the generated address with your friends"
         echo "==========================================="
 
-    # =============================================
-    # 7. نگهداشتن سرور (6 ساعت)
-    # =============================================
     - name: Keep Alive
       run: |
         echo "🔄 Server is running for 6 hours..."
@@ -200,7 +171,6 @@ jobs:
           sleep 60
           if [ $((i % 5)) -eq 0 ]; then
             echo "⏱️ Still alive... $(date)"
-            # بررسی سلامت سرویس‌ها
             if ! pgrep -f "./ZBProxy" > /dev/null; then
               echo "⚠️ ZBProxy died! Restarting..."
               screen -dmS zbproxy ./ZBProxy
