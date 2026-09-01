@@ -1,4 +1,4 @@
-name: Minecraft Server (Windows) with playit.gg
+name: Start ZeshtPixel
 
 on: [push, workflow_dispatch]
 
@@ -106,10 +106,19 @@ jobs:
 
     - name: Install playit.gg (Windows)
       run: |
-        Write-Host "📥 Downloading playit.gg installer..."
-        curl -L -o playit-installer.exe "https://playit.gg/downloads/playit-windows-x64.exe"
+        Write-Host "📥 Downloading playit.gg MSI installer..."
+        $url = "https://builds.playit.gg/1.0.10/playit-windows-x86_64-signed.msi"
+        $installer = "playit-installer.msi"
+        curl -L -o $installer $url
+        
+        if (-not (Test-Path $installer)) {
+          Write-Host "❌ Download failed! File not found."
+          exit 1
+        }
+        Write-Host "✅ Download successful! File size: $((Get-Item $installer).Length) bytes"
+        
         Write-Host "📦 Installing playit.gg (silent)..."
-        Start-Process -Wait -FilePath ".\playit-installer.exe" -ArgumentList "/S"
+        Start-Process -Wait -FilePath "msiexec" -ArgumentList "/i $installer /quiet /qn /norestart"
         Start-Sleep -Seconds 10
         Write-Host "✅ playit.gg installed!"
 
