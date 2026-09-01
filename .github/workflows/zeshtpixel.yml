@@ -1,4 +1,4 @@
-name: Start ZeshtPixel
+name: Minecraft Server (Windows) with playit.gg
 
 on: [push, workflow_dispatch]
 
@@ -129,6 +129,7 @@ jobs:
         Write-Host "==========================================="
         
         $playitPaths = @(
+          "C:\Program Files\playit_gg\bin\playit.exe",  # مسیر جدید اضافه شد
           "C:\Program Files\playit\playit.exe",
           "C:\Program Files (x86)\playit\playit.exe",
           "$env:LOCALAPPDATA\Programs\playit\playit.exe"
@@ -204,7 +205,10 @@ jobs:
             $playitProc = Get-Process -Name "playit" -ErrorAction SilentlyContinue
             if (-not $playitProc) {
               Write-Host "⚠️ playit.gg died! Restarting..."
-              $playitPath = "C:\Program Files\playit\playit.exe"
+              $playitPath = "C:\Program Files\playit_gg\bin\playit.exe"
+              if (-not (Test-Path $playitPath)) {
+                $playitPath = "C:\Program Files\playit\playit.exe"
+              }
               if (-not (Test-Path $playitPath)) {
                 $playitPath = "C:\Program Files (x86)\playit\playit.exe"
               }
