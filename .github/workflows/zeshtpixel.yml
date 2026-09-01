@@ -1,4 +1,4 @@
-name: Minecraft Server with ZBProxy & playit.gg (Auto)
+name: Minecraft Server with ZBProxy & playit.gg
 
 on: [push, workflow_dispatch]
 
@@ -91,27 +91,45 @@ jobs:
         screen -dmS zbproxy ./ZBProxy
         sleep 5
 
-    - name: Install playit.gg
+    - name: Install playit.gg (Manual Repo)
       run: |
-        curl -fsSL https://packages.playit.gg/install.sh | bash -s -- -y
+        echo "==========================================="
+        echo "📦 Installing playit.gg using manual repo..."
+        echo "==========================================="
+        
+        # 1. دانلود و نصب کلید GPG
+        curl -SsL https://packages.playit.gg/keys/playit.gpg | gpg --dearmor | sudo tee /usr/share/keyrings/playit.gpg >/dev/null
+        sudo chmod 0644 /usr/share/keyrings/playit.gpg
+        
+        # 2. اضافه کردن ریپازیتوری
+        sudo curl -fsSL -o /etc/apt/sources.list.d/playit.list https://packages.playit.gg/repo-files/playit-debian.list
+        
+        # 3. بروزرسانی و نصب
+        sudo apt update
+        sudo apt install -y playit
+        
+        echo "✅ playit.gg installed successfully!"
 
-    - name: Run playit.gg with Secret Key
-      env:
-        SECRET_KEY: ${{ secrets.PLAYIT_SECRET_KEY }}
+    - name: Run playit.gg and show Claim Code
       run: |
         echo "==========================================="
-        echo "🔐 Starting playit.gg with Secret Key..."
+        echo "🔐 Starting playit.gg to get Claim Code..."
         echo "==========================================="
         
-        # توقف سرویس سیستمی
+        # 1. اطمینان از عدم اجرای سرویس
         sudo systemctl stop playit.service || true
-        sudo systemctl disable playit.service || true
         
-        # اجرای playit با Secret Key در screen
-        screen -dmS playit bash -c "playit -s $SECRET_KEY"
-        sleep 5
+        # 2. حذف فایل‌های پیکربندی قدیمی (برای دریافت Claim Code جدید)
+        sudo rm -rf /etc/playit || true
+        rm -rf ~/.config/playit || true
         
-        echo "✅ playit.gg is running with your Secret Key!"
+        # 3. اجرای playit با timeout و نمایش خروجی مستقیم
+        echo "🔄 Running playit directly (timeout 60 seconds)..."
+        timeout 60s playit || true
+        
+        echo "==========================================="
+        echo "🔍 Claim Code should appear above (if any)."
+        echo "If you don't see it, check the logs above for errors."
         echo "==========================================="
 
     - name: Show Connection Info
@@ -120,14 +138,15 @@ jobs:
         echo "✅ Server is READY!"
         echo "==========================================="
         echo ""
-        echo "🔗 The address will be available in the playit.gg dashboard:"
-        echo "   https://playit.gg/"
-        echo ""
         echo "📋 How to connect:"
-        echo "   1. Go to playit.gg dashboard"
-        echo "   2. Find the tunnel address for your server"
-        echo "   3. Share the address with your friends"
-        echo "🎮 Connect to the server using that address"
+        echo "   1. Find the Claim Code link above"
+        echo "   2. Open it in your browser"
+        echo "   3. Claim the device"
+        echo "   4. Create a Minecraft Java tunnel on port 25565"
+        echo "   5. Share the generated address with your friends"
+        echo ""
+        echo "🔗 The address will be something like: abc123.joinmc.link"
+        echo "🎮 Connect to the server using this address"
         echo "==========================================="
 
     - name: Keep Alive
@@ -143,7 +162,7 @@ jobs:
             fi
             if ! pgrep -f "playit" > /dev/null; then
               echo "⚠️ playit.gg died! Restarting..."
-              screen -dmS playit bash -c "playit -s ${{ secrets.PLAYIT_SECRET_KEY }}"
+              screen -dmS playit bash -c "playit"
             fi
           fi
         done
