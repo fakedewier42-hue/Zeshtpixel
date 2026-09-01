@@ -1,53 +1,47 @@
-name: ُStart ZeshtPixel
+name: Start ZeshtPixel
 
 on: [push, workflow_dispatch]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest  # تغییر به ویندوز
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Install dependencies & GUI
+    # =============================================
+    # 1. نصب پیش‌نیازهای ویندوز
+    # =============================================
+    - name: Install dependencies (Windows)
       run: |
-        sudo apt-get update
-        sudo apt-get install -y wget curl screen xfce4 xfce4-goodies xvfb x11vnc
-        sudo apt-get install -y firefox
+        # نصب curl و ابزارهای ضروری (معمولاً از قبل نصب هستند)
+        choco install curl wget -y  # در صورت نیاز
 
-    - name: Install Tailscale
+    # =============================================
+    # 2. دانلود و اجرای ZBProxy (نسخه ویندوز)
+    # =============================================
+    - name: Download ZBProxy (Windows)
       run: |
-        curl -fsSL https://tailscale.com/install.sh | sh
-
-    - name: Connect to Tailscale
-      env:
-        TS_AUTHKEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
-      run: |
-        sudo tailscale up --authkey $TS_AUTHKEY --accept-routes --accept-dns
-
-    - name: Setup VNC Server
-      run: |
-        Xvfb :99 -screen 0 1280x720x24 &
-        export DISPLAY=:99
-        startxfce4 &
-        sleep 5
-        x11vnc -display :99 -forever -nopw -passwd 123456 &
-
-    - name: Download ZBProxy
-      run: |
-        wget -q -O ZBProxy "https://github.com/layou233/ZBProxy/releases/download/v3.1.0/ZBProxy-linux-amd64-v1"
-        chmod +x ZBProxy
+        # دانلود نسخه ویندوزی ZBProxy
+        curl -L -o ZBProxy.exe "https://github.com/layou233/ZBProxy/releases/download/v3.1.0/ZBProxy-windows-amd64.exe"
+        # نیازی به chmod در ویندوز نیست
 
     - name: Download and Encode Icon
       run: |
-        wget -q -O server-icon.png "https://raw.githubusercontent.com/fakedewier42-hue/Zesht-Icon/main/photo_2026-09-01_15-14-07.png"
-        ICON_BASE64="data:image/png;base64,$(base64 -w0 server-icon.png)"
-        echo "ICON_BASE64=$ICON_BASE64" >> $GITHUB_ENV
+        # دانلود آیکون از گیت‌هاب
+        curl -L -o server-icon.png "https://raw.githubusercontent.com/fakedewier42-hue/Zesht-Icon/main/photo_2026-09-01_15-14-07.png"
+        # تبدیل به Base64 در PowerShell
+        $bytes = [System.IO.File]::ReadAllBytes("$pwd\server-icon.png")
+        $base64 = [Convert]::ToBase64String($bytes)
+        $ICON_BASE64 = "data:image/png;base64,$base64"
+        echo "ICON_BASE64=$ICON_BASE64" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
     - name: Create ZBProxy Configuration
       run: |
-        cat > ZBProxy.json << EOF
+        # استفاده از متغیر ICON_BASE64 در کانفیگ (با Syntax PowerShell)
+        $ICON = $env:ICON_BASE64
+        @"
         {
             "Log": {
                 "Level": "info"
@@ -101,7 +95,7 @@ jobs:
                             "Mode": ""
                         },
                         "PingMode": "",
-                        "MotdFavicon": "$ICON_BASE64",
+                        "MotdFavicon": "$ICON",
                         "MotdDescription": "§6§lWelcome to §c§lZeshtPixel §e§lthe server by §b§lDabbler_"
                     },
                     "ProxyOptions": {}
@@ -109,75 +103,106 @@ jobs:
             ],
             "Lists": {}
         }
-        EOF
+        "@ | Out-File -FilePath ZBProxy.json -Encoding utf8
 
-    - name: Run ZBProxy in Screen
+    - name: Run ZBProxy in Background (Windows)
       run: |
-        screen -dmS zbproxy ./ZBProxy
-        sleep 5
+        # اجرای ZBProxy در پس‌زمینه با Start-Process
+        Start-Process -NoNewWindow -FilePath ".\ZBProxy.exe" -RedirectStandardOutput "zbproxy.log" -RedirectStandardError "zbproxy.error.log"
+        Start-Sleep -Seconds 5
+        Write-Host "✅ ZBProxy is running in background!"
 
-    - name: Install playit.gg
+    # =============================================
+    # 3. نصب و راه‌اندازی playit.gg (ویندوز)
+    # =============================================
+    - name: Install playit.gg (Windows)
       run: |
-        curl -fsSL https://packages.playit.gg/install.sh | bash -s -- -y
+        # دانلود نصب‌کننده playit.gg برای ویندوز
+        curl -L -o playit-installer.exe "https://playit.gg/downloads/playit-windows-x64.exe"
+        # نصب بی‌صدا (Silent Install)
+        Start-Process -Wait -FilePath ".\playit-installer.exe" -ArgumentList "/S"
+        # صبر برای کامل شدن نصب
+        Start-Sleep -Seconds 10
 
     - name: Run playit.gg and show Claim Code
       run: |
-        echo "==========================================="
-        echo "🔐 Starting playit.gg to get Claim Code..."
-        echo "==========================================="
-        sudo systemctl stop playit.service || true
-        sudo rm -rf /etc/playit || true
-        rm -rf ~/.config/playit || true
-        screen -dmS playit bash -c "playit"
-        sleep 15
-        screen -S playit -X hardcopy /tmp/playit_output.txt
-        echo "=== Full playit.gg output ==="
-        cat /tmp/playit_output.txt
-        echo "================================"
-        CLAIM_URL=$(grep -o 'https://playit.gg/claim/[a-zA-Z0-9]*' /tmp/playit_output.txt | head -1)
-        if [ -n "$CLAIM_URL" ]; then
-          echo ""
-          echo "🎯 Your Claim Code URL: $CLAIM_URL"
-          echo "Open this link in your browser to claim your server!"
-        else
-          echo ""
-          echo "⚠️ No Claim Code found. Check the full output above."
-        fi
-        echo "==========================================="
+        Write-Host "==========================================="
+        Write-Host "🔐 Starting playit.gg to get Claim Code..."
+        Write-Host "==========================================="
+        
+        # مسیر نصب playit (معمولاً در Program Files)
+        $playitPath = "C:\Program Files\playit\playit.exe"
+        if (-not (Test-Path $playitPath)) {
+          $playitPath = "C:\Program Files (x86)\playit\playit.exe"
+        }
+        
+        # حذف تنظیمات قبلی (در صورت وجود)
+        Remove-Item -Force -ErrorAction SilentlyContinue -Recurse "$env:APPDATA\playit"
+        Remove-Item -Force -ErrorAction SilentlyContinue -Recurse "$env:LOCALAPPDATA\playit"
+        
+        # اجرای playit و گرفتن خروجی
+        $output = & $playitPath 2>&1 | Out-String
+        Write-Host "=== Full playit.gg output ==="
+        Write-Host $output
+        Write-Host "================================"
+        
+        # جستجوی Claim Code در خروجی
+        if ($output -match 'https://playit.gg/claim/([a-zA-Z0-9]+)') {
+          $claimUrl = $matches[0]
+          Write-Host ""
+          Write-Host "🎯 Your Claim Code URL: $claimUrl"
+          Write-Host "Open this link in your browser to claim your server!"
+        } else {
+          Write-Host ""
+          Write-Host "⚠️ No Claim Code found. Check the full output above."
+        }
+        Write-Host "==========================================="
 
+    # =============================================
+    # 4. نمایش اطلاعات نهایی
+    # =============================================
     - name: Show Connection Info
       run: |
-        TAILSCALE_IP=$(sudo tailscale ip)
-        echo "==========================================="
-        echo "✅ Server is READY!"
-        echo "==========================================="
-        echo ""
-        echo "🔗 Tailscale IP: $TAILSCALE_IP"
-        echo "🌐 VNC Desktop: $TAILSCALE_IP:5900 (Password: 123456)"
-        echo "🎮 Connect to Minecraft via playit.gg address"
-        echo ""
-        echo "📋 How to connect:"
-        echo "   1. Find the Claim Code link above"
-        echo "   2. Open it in your browser"
-        echo "   3. Claim the device"
-        echo "   4. Create a Minecraft Java tunnel on port 25565"
-        echo "   5. Share the generated address with your friends"
-        echo "==========================================="
+        Write-Host "==========================================="
+        Write-Host "✅ Server is READY on Windows!"
+        Write-Host "==========================================="
+        Write-Host ""
+        Write-Host "📋 How to connect:"
+        Write-Host "   1. Find the Claim Code link above"
+        Write-Host "   2. Open it in your browser"
+        Write-Host "   3. Claim the device"
+        Write-Host "   4. Create a Minecraft Java tunnel on port 25565"
+        Write-Host "   5. Share the generated address with your friends"
+        Write-Host ""
+        Write-Host "🔗 The address will be something like: abc123.joinmc.link"
+        Write-Host "🎮 Connect to the server using this address"
+        Write-Host "==========================================="
 
+    # =============================================
+    # 5. نگهداشتن سرور (6 ساعت)
+    # =============================================
     - name: Keep Alive
       run: |
-        echo "🔄 Server is running for 6 hours..."
-        for i in {1..360}; do
-          sleep 60
-          if [ $((i % 5)) -eq 0 ]; then
-            echo "⏱️ Still alive... $(date)"
-            if ! pgrep -f "./ZBProxy" > /dev/null; then
-              echo "⚠️ ZBProxy died! Restarting..."
-              screen -dmS zbproxy ./ZBProxy
-            fi
-            if ! pgrep -f "playit" > /dev/null; then
-              echo "⚠️ playit.gg died! Restarting..."
-              screen -dmS playit bash -c "playit"
-            fi
-          fi
-        done
+        Write-Host "🔄 Server is running for 6 hours..."
+        for ($i = 1; $i -le 360; $i++) {
+          Start-Sleep -Seconds 60
+          if ($i % 5 -eq 0) {
+            Write-Host "⏱️ Still alive... $(Get-Date)"
+            # بررسی سلامت ZBProxy
+            $proc = Get-Process -Name "ZBProxy" -ErrorAction SilentlyContinue
+            if (-not $proc) {
+              Write-Host "⚠️ ZBProxy died! Restarting..."
+              Start-Process -NoNewWindow -FilePath ".\ZBProxy.exe" -RedirectStandardOutput "zbproxy.log" -RedirectStandardError "zbproxy.error.log"
+            }
+            # بررسی سلامت playit
+            $playitProc = Get-Process -Name "playit" -ErrorAction SilentlyContinue
+            if (-not $playitProc) {
+              Write-Host "⚠️ playit.gg died! Restarting..."
+              $playitPath = "C:\Program Files\playit\playit.exe"
+              if (-not (Test-Path $playitPath)) {
+                $playitPath = "C:\Program Files (x86)\playit\playit.exe"
+              }
+              Start-Process -NoNewWindow -FilePath $playitPath
+            }
+          }
+        }
