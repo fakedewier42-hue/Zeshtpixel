@@ -122,72 +122,20 @@ jobs:
         Start-Sleep -Seconds 10
         Write-Host "✅ playit.gg installed!"
 
-    - name: Run playit.gg and show Claim Code
-      run: |
-        Write-Host "==========================================="
-        Write-Host "🔐 Starting playit.gg to get Claim Code..."
-        Write-Host "==========================================="
-        
-        $playitPaths = @(
-          "C:\Program Files\playit_gg\bin\playit.exe",  # مسیر جدید اضافه شد
-          "C:\Program Files\playit\playit.exe",
-          "C:\Program Files (x86)\playit\playit.exe",
-          "$env:LOCALAPPDATA\Programs\playit\playit.exe"
-        )
-        
-        $playitPath = $null
-        foreach ($path in $playitPaths) {
-          if (Test-Path $path) {
-            $playitPath = $path
-            break
-          }
-        }
-        
-        if (-not $playitPath) {
-          Write-Host "❌ playit.exe not found!"
-          Write-Host "Searching in common locations..."
-          Get-ChildItem -Path "C:\" -Filter "playit.exe" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-            Write-Host "Found: $($_.FullName)"
-          }
-          exit 1
-        }
-        
-        Write-Host "🔍 Found playit at: $playitPath"
-        Remove-Item -Force -ErrorAction SilentlyContinue -Recurse "$env:APPDATA\playit"
-        Remove-Item -Force -ErrorAction SilentlyContinue -Recurse "$env:LOCALAPPDATA\playit"
-        
-        Write-Host "🔄 Running playit to generate Claim Code..."
-        $output = & $playitPath 2>&1 | Out-String
-        Write-Host "=== Full playit.gg output ==="
-        Write-Host $output
-        Write-Host "================================"
-        
-        if ($output -match 'https://playit.gg/claim/([a-zA-Z0-9]+)') {
-          $claimUrl = $matches[0]
-          Write-Host ""
-          Write-Host "🎯 Your Claim Code URL: $claimUrl"
-          Write-Host "Open this link in your browser to claim your server!"
-        } else {
-          Write-Host ""
-          Write-Host "⚠️ No Claim Code found. Check the full output above."
-        }
-        Write-Host "==========================================="
-
     - name: Show Connection Info
       run: |
         Write-Host "==========================================="
         Write-Host "✅ Server is READY on Windows!"
         Write-Host "==========================================="
         Write-Host ""
-        Write-Host "📋 How to connect:"
-        Write-Host "   1. Find the Claim Code link above"
-        Write-Host "   2. Open it in your browser"
-        Write-Host "   3. Claim the device"
-        Write-Host "   4. Create a Minecraft Java tunnel on port 25565"
-        Write-Host "   5. Share the generated address with your friends"
+        Write-Host "🔗 To access the server:"
+        Write-Host "   1. Connect via Remote Desktop (RDP) to this Windows machine"
+        Write-Host "   2. Open playit.gg from the Start Menu or 'C:\Program Files\playit_gg\bin\playit.exe'"
+        Write-Host "   3. Follow the instructions to get the Claim Code and create a tunnel"
+        Write-Host "   4. Share the generated address with your friends"
         Write-Host ""
-        Write-Host "🔗 The address will be something like: abc123.joinmc.link"
-        Write-Host "🎮 Connect to the server using this address"
+        Write-Host "📋 Note: ZBProxy is already running on port 25565"
+        Write-Host "🎮 Connect to the playit.gg address from Minecraft"
         Write-Host "==========================================="
 
     - name: Keep Alive
@@ -201,20 +149,6 @@ jobs:
             if (-not $proc -or $proc.State -eq "Completed" -or $proc.State -eq "Failed") {
               Write-Host "⚠️ ZBProxy died! Restarting..."
               Start-Job -ScriptBlock { & ".\ZBProxy.exe" > zbproxy.log 2>&1 }
-            }
-            $playitProc = Get-Process -Name "playit" -ErrorAction SilentlyContinue
-            if (-not $playitProc) {
-              Write-Host "⚠️ playit.gg died! Restarting..."
-              $playitPath = "C:\Program Files\playit_gg\bin\playit.exe"
-              if (-not (Test-Path $playitPath)) {
-                $playitPath = "C:\Program Files\playit\playit.exe"
-              }
-              if (-not (Test-Path $playitPath)) {
-                $playitPath = "C:\Program Files (x86)\playit\playit.exe"
-              }
-              if (Test-Path $playitPath) {
-                Start-Process -NoNewWindow -FilePath $playitPath
-              }
             }
           }
         }
