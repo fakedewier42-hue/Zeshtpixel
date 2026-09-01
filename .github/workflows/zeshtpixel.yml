@@ -1,4 +1,4 @@
-name: CI
+name: OOpsy
 
 on: [push, workflow_dispatch]
 
@@ -39,7 +39,7 @@ jobs:
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
     - name: Set User Password
-      run: Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "WindowsRDP#2025" -Force)
+      run: Set-LocalUser -Name "Sepehr" -Password (ConvertTo-SecureString -AsPlainText "Sepehr" -Force)
 
     # =============================================
     # 2. دانلود و نصب ZBProxy روی دسکتاپ
