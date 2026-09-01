@@ -1,4 +1,4 @@
-name: Minecraft Server (Windows) with playit.gg
+name: CI
 
 on: [push, workflow_dispatch]
 
@@ -7,32 +7,60 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - name: Checkout code
+    - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Download ZBProxy (Windows)
+    # =============================================
+    # 1. نصب و راه‌اندازی Tailscale
+    # =============================================
+    - name: Install Tailscale
+      run: |
+        $url = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
+        Write-Host "Downloading Tailscale from: $url"
+        Invoke-WebRequest -Uri $url -OutFile tailscale-installer.exe -UseBasicParsing
+        if (-not (Test-Path tailscale-installer.exe)) {
+            throw "Download failed: tailscale-installer.exe not found"
+        }
+        Write-Host "Download successful, installing..."
+        Start-Process -Wait -FilePath ".\tailscale-installer.exe" -ArgumentList "/quiet /qn /norestart"
+        Start-Sleep -Seconds 15
+        Write-Host "Installation complete."
+
+    - name: Connect to Tailscale
+      run: |
+        & "C:\Program Files\Tailscale\tailscale.exe" up --authkey $env:TAILSCALE_AUTH_KEY --accept-routes --accept-dns
+      env:
+        TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+
+    - name: Enable RDP
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+    - name: Set User Password
+      run: Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "WindowsRDP#2025" -Force)
+
+    # =============================================
+    # 2. دانلود و نصب ZBProxy روی دسکتاپ
+    # =============================================
+    - name: Download ZBProxy
       run: |
         Write-Host "📥 Downloading ZBProxy v3.1.0 for Windows..."
         $url = "https://github.com/layou233/ZBProxy/releases/download/v3.1.0/ZBProxy-windows-amd64-v3.exe"
-        curl -L -o ZBProxy.exe $url
-        if (Test-Path ZBProxy.exe) {
-          Write-Host "✅ Download successful! File size: $((Get-Item ZBProxy.exe).Length) bytes"
+        Invoke-WebRequest -Uri $url -OutFile "$env:USERPROFILE\Desktop\ZBProxy.exe" -UseBasicParsing
+        if (Test-Path "$env:USERPROFILE\Desktop\ZBProxy.exe") {
+          Write-Host "✅ ZBProxy downloaded successfully on Desktop!"
         } else {
           Write-Host "❌ Download failed!"
           exit 1
         }
 
-    - name: Download and Encode Icon
-      run: |
-        curl -L -o server-icon.png "https://raw.githubusercontent.com/fakedewier42-hue/Zesht-Icon/main/photo_2026-09-01_15-14-07.png"
-        $bytes = [System.IO.File]::ReadAllBytes("$pwd\server-icon.png")
-        $base64 = [Convert]::ToBase64String($bytes)
-        $ICON_BASE64 = "data:image/png;base64,$base64"
-        echo "ICON_BASE64=$ICON_BASE64" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
+    # =============================================
+    # 3. ایجاد کانفیگ ZBProxy روی دسکتاپ
+    # =============================================
     - name: Create ZBProxy Configuration
       run: |
-        $ICON = $env:ICON_BASE64
         @"
         {
             "Log": {
@@ -87,7 +115,6 @@ jobs:
                             "Mode": ""
                         },
                         "PingMode": "",
-                        "MotdFavicon": "$ICON",
                         "MotdDescription": "§6§lWelcome to §c§lZeshtPixel §e§lthe server by §b§lDabbler_"
                     },
                     "ProxyOptions": {}
@@ -95,21 +122,17 @@ jobs:
             ],
             "Lists": {}
         }
-        "@ | Out-File -FilePath ZBProxy.json -Encoding utf8
+        "@ | Out-File -FilePath "$env:USERPROFILE\Desktop\ZBProxy.json" -Encoding utf8
 
-    - name: Run ZBProxy in Background
-      run: |
-        Write-Host "🚀 Starting ZBProxy..."
-        Start-Job -ScriptBlock { & ".\ZBProxy.exe" > zbproxy.log 2>&1 }
-        Start-Sleep -Seconds 5
-        Write-Host "✅ ZBProxy is running as a job!"
-
-    - name: Install playit.gg (Windows)
+    # =============================================
+    # 4. نصب playit.gg روی دسکتاپ
+    # =============================================
+    - name: Install playit.gg
       run: |
         Write-Host "📥 Downloading playit.gg MSI installer..."
         $url = "https://builds.playit.gg/1.0.10/playit-windows-x86_64-signed.msi"
-        $installer = "playit-installer.msi"
-        curl -L -o $installer $url
+        $installer = "$env:USERPROFILE\Desktop\playit-installer.msi"
+        Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
         
         if (-not (Test-Path $installer)) {
           Write-Host "❌ Download failed! File not found."
@@ -122,33 +145,39 @@ jobs:
         Start-Sleep -Seconds 10
         Write-Host "✅ playit.gg installed!"
 
-    - name: Show Connection Info
+    # =============================================
+    # 5. نمایش اطلاعات اتصال
+    # =============================================
+    - name: Display Connection Details
       run: |
-        Write-Host "==========================================="
-        Write-Host "✅ Server is READY on Windows!"
-        Write-Host "==========================================="
+        $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip
+        Write-Host "================================="
+        Write-Host "✅ RDP IS READY!"
+        Write-Host "IP Address: $ip"
+        Write-Host "Username  : runneradmin"
+        Write-Host "Password  : WindowsRDP#2025"
+        Write-Host "================================="
+        Write-Host ""
+        Write-Host "📋 ZBProxy and playit.gg are installed on Desktop:"
+        Write-Host "   - ZBProxy.exe"
+        Write-Host "   - ZBProxy.json"
+        Write-Host "   - playit-installer.msi (installer file)"
         Write-Host ""
         Write-Host "🔗 To access the server:"
-        Write-Host "   1. Connect via Remote Desktop (RDP) to this Windows machine"
-        Write-Host "   2. Open playit.gg from the Start Menu or 'C:\Program Files\playit_gg\bin\playit.exe'"
-        Write-Host "   3. Follow the instructions to get the Claim Code and create a tunnel"
-        Write-Host "   4. Share the generated address with your friends"
-        Write-Host ""
-        Write-Host "📋 Note: ZBProxy is already running on port 25565"
-        Write-Host "🎮 Connect to the playit.gg address from Minecraft"
-        Write-Host "==========================================="
+        Write-Host "   1. Connect via Remote Desktop to IP: $ip"
+        Write-Host "   2. Run ZBProxy.exe from Desktop"
+        Write-Host "   3. Run playit.gg from Start Menu or Desktop to create a tunnel"
+        Write-Host "================================="
 
+    # =============================================
+    # 6. نگهداشتن سرور (6 ساعت)
+    # =============================================
     - name: Keep Alive
       run: |
         Write-Host "🔄 Server is running for 6 hours..."
-        for ($i = 1; $i -le 360; $i++) {
+        for ($i = 0; $i -lt 360; $i++) {
           Start-Sleep -Seconds 60
           if ($i % 5 -eq 0) {
             Write-Host "⏱️ Still alive... $(Get-Date)"
-            $proc = Get-Job -Name "ZBProxy" -ErrorAction SilentlyContinue
-            if (-not $proc -or $proc.State -eq "Completed" -or $proc.State -eq "Failed") {
-              Write-Host "⚠️ ZBProxy died! Restarting..."
-              Start-Job -ScriptBlock { & ".\ZBProxy.exe" > zbproxy.log 2>&1 }
-            }
           }
         }
